@@ -1,17 +1,23 @@
 #!/usr/bin/env bash
-# Read-only: finds top-level paths under $HOME that look like configs but
-# aren't tracked in this repo yet, and prints ready-to-run adopt.sh commands.
+# Read-only: finds well-known config paths under $HOME that aren't tracked
+# in this repo yet, and prints a ready-to-run adopt.sh command for each.
 #
 # Usage: ./check-adoptable.sh
 #
-# This is a starting point for onboarding a new machine (or this repo
-# itself), not a verdict: it deliberately excludes known noise (browser
-# profiles, caches, app sync state - see DENYLIST below) so it doesn't
-# suggest scooping up secrets or gigabytes of cache into git, but you're
-# still the one deciding what actually belongs in the repo. Review the
-# list before running any of the printed commands. Checks top-level
-# entries only (e.g. all of ~/.config/nvim as one candidate), matching
-# the granularity adopt.sh itself adopts at.
+# Deliberately an ALLOWLIST, not a denylist: only paths matching ALLOWLIST
+# below are ever suggested. A denylist has to name every risky thing in
+# advance and this repo has already shipped one that didn't (see README.md's
+# "Why adopt.sh refuses some paths") - an allowlist can only ever suggest
+# too little, never too much. Extend ALLOWLIST yourself for tools it
+# doesn't know about; adopt.sh's own hard blocklist still applies to
+# whatever you adopt regardless of how you found it.
+#
+# This is a starting point, not a verdict - review each suggestion before
+# running it. Checks top-level entries only (e.g. all of ~/.config/nvim as
+# one candidate), matching the granularity adopt.sh itself adopts at.
+# Deliberately prints one adopt.sh command per candidate rather than a
+# single "adopt everything" one-liner: reviewing and running commands one
+# at a time is the point, not friction to route around.
 
 set -euo pipefail
 
@@ -19,27 +25,33 @@ REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 log() { echo -e "\033[1;34m==>\033[0m $*"; }
 
-# Extend this rather than fighting it - a false positive here is just a
-# suggestion you ignore, not a wrong adopt (adopt.sh itself never runs
-# automatically off this list).
-DENYLIST=(
-  ".cache" ".local" ".dotstate-backup-*" ".dotfiles-backup-*"
-  "google-chrome" "google-chrome-beta" "chromium" "BraveSoftware"
-  "microsoft-edge" "vivaldi" "Slack" "discord" "Signal" "obsidian"
-  "mozilla" "thunderbird" "evolution" "spotify"
-  "Nextcloud" "nextcloud" "syncthing" "dropbox" ".dropbox"
-  "pulse" "dconf" "ibus"
-  # Credential material, not config - never suggest these, unlike
-  # ~/.config/git/config which is a legitimate, secret-free config to adopt.
-  "gnupg" "ssh" "password-store"
+# Common terminal/editor/WM/shell config directories with no credential or
+# runtime-state content of their own. Deliberately conservative: it's much
+# cheaper to manually adopt something missing from this list than to clean
+# up after suggesting something that shouldn't have been.
+ALLOWLIST_CONFIG_DIRS=(
+  hypr waybar wofi rofi walker
+  alacritty kitty foot ghostty wezterm
+  tmux nvim vim helix zellij
+  git gtk-3.0 gtk-4.0 fontconfig
+  lazygit btop htop fcitx5
+  mise direnv fish
+  menus autostart
+)
+ALLOWLIST_CONFIG_FILES=(
+  mimeapps.list starship.toml user-dirs.dirs user-dirs.locale
+)
+ALLOWLIST_DOTFILES=(
+  .bashrc .bash_profile .bash_login .profile
+  .zshrc .zprofile .zshenv
+  .gitconfig .gitignore_global
+  .tmux.conf .vimrc .inputrc .Xresources .xinitrc
 )
 
-is_denied() {
-  local name="$1" pattern
-  for pattern in "${DENYLIST[@]}"; do
-    # shellcheck disable=SC2053 # intentional glob match against $pattern
-    [[ "$name" == $pattern ]] && return 0
-  done
+in_list() {
+  local needle="$1" item
+  shift
+  for item; do [ "$needle" = "$item" ] && return 0; done
   return 1
 }
 
@@ -87,7 +99,11 @@ main() {
   for entry in "$HOME"/.config/*; do
     [ -e "$entry" ] || continue
     base="$(basename "$entry")"
-    is_denied "$base" && continue
+    if [ -d "$entry" ]; then
+      in_list "$base" "${ALLOWLIST_CONFIG_DIRS[@]}" || continue
+    else
+      in_list "$base" "${ALLOWLIST_CONFIG_FILES[@]}" || continue
+    fi
     already_tracked "$entry" && continue
     foreign="$(find_foreign_symlink "$entry")" || true
     if [ -n "$foreign" ]; then
@@ -100,11 +116,8 @@ main() {
   shopt -s dotglob nullglob
   for entry in "$HOME"/.*; do
     base="$(basename "$entry")"
-    case "$base" in
-      . | .. | .config) continue ;;
-    esac
     [ -f "$entry" ] || continue
-    is_denied "$base" && continue
+    in_list "$base" "${ALLOWLIST_DOTFILES[@]}" || continue
     already_tracked "$entry" && continue
     foreign="$(find_foreign_symlink "$entry")" || true
     if [ -n "$foreign" ]; then
@@ -122,23 +135,19 @@ main() {
   fi
 
   if [ "${#candidates[@]}" -eq 0 ]; then
-    log "Nothing else obviously untracked found under \$HOME."
-    log "Nothing was changed."
+    log "Nothing from the known-config allowlist found untracked under \$HOME."
+    log "Have something else to adopt? Nothing was changed - run"
+    log "  ./adopt.sh ~/.config/<yourtool>"
+    log "yourself; this script only ever suggests from a fixed, conservative list."
     exit 0
   fi
 
-  log "Untracked config-looking paths under \$HOME (review before adopting):"
-  printf '    %s\n' "${candidates[@]}"
-
-  echo
-  log "Nothing was changed. Adopt what you actually want, e.g. all at once:"
-  local quoted=()
+  log "Known config paths under \$HOME not tracked yet - review each, then:"
   local c
   for c in "${candidates[@]}"; do
-    quoted+=("\"\$HOME/$c\"")
+    echo "    ./adopt.sh \"\$HOME/$c\""
   done
-  echo "    ./adopt.sh ${quoted[*]}"
-  log "...or pick individually, and use --host for anything machine-specific."
+  log "...use --host instead for anything machine-specific."
 }
 
 main "$@"

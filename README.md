@@ -14,9 +14,11 @@ for the tooling only. You bring your own `home/` and `packages/*.txt`.
   timer. Idempotent, safe to re-run.
 - `adopt.sh` — turns an existing real config file into a repo-tracked
   symlink (`--host` for machine-specific files).
-- `check-adoptable.sh` — read-only: scans `$HOME` for config-looking paths
-  not yet tracked and prints ready-to-run `adopt.sh` commands, so you don't
-  have to hunt for them yourself on a new machine.
+- `check-adoptable.sh` — read-only: scans `$HOME` for well-known config
+  paths (an explicit allowlist, see "Why adopt.sh refuses some paths"
+  below) not yet tracked, and prints one `adopt.sh` command per candidate
+  for you to review, so you don't have to hunt for them yourself on a new
+  machine.
 - `backup.sh` — auto-commits and pushes changes; run by a systemd user
   timer daily and ~5 minutes after login. Writes the status the bar widget
   reads.
@@ -38,11 +40,11 @@ for the tooling only. You bring your own `home/` and `packages/*.txt`.
 1. Click **"Use this template"** on this repo to create your own (can be
    private) dotfiles repo.
 2. Clone it, e.g. to `~/Projects/dotfiles`.
-3. Run `./check-adoptable.sh` to find config-looking paths already on this
-   machine that aren't tracked yet, and `./adopt.sh` the ones you want (see
-   its printed suggestions) — or add files under `home/` (mirrors `$HOME`)
-   by hand. Add your extra packages in `packages/pacman.common.txt` /
-   `packages/aur.common.txt`.
+3. Run `./check-adoptable.sh` to find well-known config paths already on
+   this machine that aren't tracked yet. Review its suggestions and
+   `./adopt.sh` the ones you actually want, **one at a time** — or add
+   files under `home/` (mirrors `$HOME`) by hand. Add your extra packages
+   in `packages/pacman.common.txt` / `packages/aur.common.txt`.
 4. `./install.sh`
 
 ```bash
@@ -65,6 +67,42 @@ optional `home.<hostname>/` (hostname via the `hostname` command), which
 
 `home.<hostname>/` is purely additive — a new/renamed machine without an
 overlay just gets `home/`, nothing breaks.
+
+## Why adopt.sh refuses some paths
+
+Early on, `check-adoptable.sh` suggested a directory that looked like a
+plain config at the top level, but (because `install.sh` symlinks
+individual files rather than whole directories) turned out to contain
+files another dotfiles setup already managed. Adopting it whole broke
+that management. Fixed by having both scripts detect and refuse any
+symlink pointing outside the current repo, at any depth.
+
+Separately, a broader test run adopted several top-level `~/.config/*`
+entries at once, including some that weren't plain config at all: an
+editor's cache/session-state directory and a CLI tool's login-token file
+ended up committed and briefly pushed to a public remote. The original
+`check-adoptable.sh` used a denylist of "known noise" to filter
+suggestions — which can only ever list what it already knows to avoid,
+and this is exactly what it missed.
+
+Both scripts now work the other way around:
+
+- `check-adoptable.sh` only ever suggests paths from a fixed **allowlist**
+  of common, credential-free config locations (see `ALLOWLIST_*` at the
+  top of the script) — extend it yourself for tools it doesn't know about.
+  It also prints one `adopt.sh` command per candidate instead of a single
+  "adopt everything" one-liner, so reviewing each one is the default path,
+  not an extra step to skip.
+- `adopt.sh` itself refuses, unconditionally and with no override flag,
+  anything matching a hard blocklist of credential/state locations, a
+  case-insensitive name pattern (`*token*`, `*credential*`, `*history*`,
+  `*session*`, ...), or anything larger than 5MB — this applies no matter
+  how the path was given to it, including typed by hand.
+
+If you ever hit one of these refusals for something you're sure is a
+plain config file, that's a false positive in a hardcoded list, not a
+bug in the logic — adopt it manually (copy it into `home/`, symlink it
+back, `git add`) instead of trying to force `adopt.sh` past the check.
 
 ## Secret scan
 

@@ -13,7 +13,8 @@
 # should not be shared with other machines.
 #
 # Safe to re-run: paths already adopted (already a symlink into the repo)
-# are skipped.
+# are skipped. Refuses anything that looks like credential/state data
+# (by name, pattern, or just being unexpectedly large) - see README.md.
 
 set -euo pipefail
 
@@ -22,6 +23,84 @@ DEST_NAME="home"
 
 log()  { echo -e "\033[1;34m==>\033[0m $*"; }
 err()  { echo -e "\033[1;31m==>\033[0m $*" >&2; }
+
+# Hard safety net: refused no matter how the path was requested (manually
+# typed or suggested by check-adoptable.sh), and there is no override flag -
+# if you genuinely want one of these in git, do it by hand outside this
+# script so it's a deliberate, visible act. See README.md's "Why adopt.sh
+# refuses some paths" for the incident that made this necessary: a directory
+# that looked like a plain config on top adopted several real credential
+# files nested inside it (shell CLI auth tokens, editor session state)
+# because nothing here knew their names in advance.
+BLOCKED_BASENAMES=(
+  ".ssh" ".gnupg" ".password-store" ".netrc" ".npmrc" ".pypirc"
+  ".docker" ".kube" ".aws" ".azure" "gh" ".git-credentials"
+  ".bash_history" ".zsh_history" ".python_history" ".lesshst" ".viminfo"
+  ".claude.json" ".claude"
+  "Code" "Cursor" "opencode" "omamail" "herdr"
+)
+
+is_blocked_by_name() {
+  local rel="$1" b
+  for b in "${BLOCKED_BASENAMES[@]}"; do
+    case "$rel" in
+      "$b" | "$b"/* | */"$b" | */"$b"/*) return 0 ;;
+    esac
+  done
+  return 1
+}
+
+# Case-insensitive, catches credential/state-shaped names this script has
+# never heard of - the actual point of this layer, since BLOCKED_BASENAMES
+# above can only ever list what's already known to be risky.
+is_blocked_by_pattern() {
+  local rel_lower
+  rel_lower="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+  case "$rel_lower" in
+    *history*|*token*|*credential*|*secret*|*password*|*session*|*cookie*|*auth*|*cache*) return 0 ;;
+  esac
+  return 1
+}
+
+# A real config is small text. Anything bigger than this is almost
+# certainly app state/cache/a database, adopted or not - refuse rather
+# than silently committing megabytes of binary blobs to git.
+MAX_ADOPT_BYTES=$((5 * 1024 * 1024))
+
+is_too_large() {
+  local path="$1" size
+  size="$(du -sb "$path" 2>/dev/null | cut -f1)"
+  [ -n "$size" ] && [ "$size" -gt "$MAX_ADOPT_BYTES" ]
+}
+
+# Prints why $1 (relative path $2) should be refused, checking $1 itself,
+# every entry nested under it if it's a directory, and its total size -
+# empty output means it's fine to proceed.
+find_blocked_reason() {
+  local path="$1" rel="$2" entry entry_rel
+
+  if is_blocked_by_name "$rel" || is_blocked_by_pattern "$rel"; then
+    echo "looks like credential/state data ($rel)"
+    return 0
+  fi
+
+  if is_too_large "$path"; then
+    echo "larger than $((MAX_ADOPT_BYTES / 1024 / 1024))MB - not a typical config, refusing to guess what's in it"
+    return 0
+  fi
+
+  if [ -d "$path" ]; then
+    while IFS= read -r -d '' entry; do
+      entry_rel="${entry#"$HOME"/}"
+      if is_blocked_by_name "$entry_rel" || is_blocked_by_pattern "$entry_rel"; then
+        echo "contains $entry_rel, which looks like credential/state data"
+        return 0
+      fi
+    done < <(find "$path" -mindepth 1 -print0 2>/dev/null)
+  fi
+
+  return 1
+}
 
 # Prints the real path of the first symlink at or under $1 that resolves
 # outside this repo, or nothing if there is none. Catches both "$1 itself
@@ -82,6 +161,13 @@ adopt_path() {
 
   if [ ! -e "$target" ]; then
     err "Skipping $rel: does not exist"
+    return 1
+  fi
+
+  local blocked
+  blocked="$(find_blocked_reason "$target" "$rel")" || true
+  if [ -n "$blocked" ]; then
+    err "Refusing $rel: $blocked"
     return 1
   fi
 
