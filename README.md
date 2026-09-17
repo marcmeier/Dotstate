@@ -100,8 +100,9 @@ for how plugins work in general). It shows an icon in your bar:
 | Normal (foreground) | Last sync succeeded |
 | Urgent | Last sync failed |
 
-Clicking it opens a small panel with **Sync now**, **Check package
-drift**, **Check symlinks**, and **Open repo**.
+Clicking it opens a small panel with a **dotfiles repo path** field (see
+below), **Sync now**, **Check package drift**, **Check symlinks**, and
+**Open repo**.
 
 Add it once you've created your own repo from this template:
 
@@ -112,9 +113,11 @@ omarchy plugin add https://github.com/<you>/<your-dotfiles-repo>.git --enable --
 **Important:** this clones the plugin into its own directory under
 `~/.config/omarchy/plugins/`, separate from your actual working checkout
 (e.g. `~/Projects/dotfiles`). Because of that, the widget doesn't guess
-where your real repo is — set **"Path to your dotfiles repo"** in the
-widget's settings (Setup > Plugins) to the path you cloned it to in step 2
-of the Quickstart.
+where your real repo is: click the icon, type the path you cloned it to in
+step 2 of the Quickstart into the **"Dotfiles repo path"** field, and hit
+**Save** (or Enter). This writes it inline into your widget's entry in
+`~/.config/omarchy/shell.json` — there's no separate settings page for
+third-party widgets in Setup > Plugins as of this Omarchy version.
 
 ## CI
 

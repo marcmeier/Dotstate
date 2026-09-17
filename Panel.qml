@@ -13,8 +13,11 @@ import "Model.js" as Model
 // your actual working dotfiles checkout (the one with your real home/ and
 // packages/, where install.sh/backup.sh actually run). This widget can't
 // assume it lives inside that checkout, so the path is a per-instance
-// setting (dotfilesRepo) instead of being inferred - set it once under
-// Setup > Plugins after adding the widget.
+// setting (dotfilesRepo) instead of being inferred - set it once in the
+// panel itself (the text field below), which persists it inline in
+// ~/.config/omarchy/shell.json via bar.shell.updateEntryInline(). There is
+// no separate "settings" UI for third-party widgets in Setup > Plugins as
+// of this Omarchy version, so the panel has to own this itself.
 Panel {
   id: root
   moduleName: "io.github.marcmeier.dotstate"
@@ -41,7 +44,7 @@ Panel {
   }
 
   readonly property string tooltipText: {
-    if (!configured) return "Dotstate: set your dotfiles repo path in the widget settings"
+    if (!configured) return "Dotstate: click and set your dotfiles repo path below"
     if (!status.known) return "Dotstate: no sync run yet - click Sync now"
     var when = Model.relativeTime(status.lastRun)
     if (!status.ok) return "Dotstate: last sync failed " + when + (status.error ? " (" + status.error + ")" : "")
@@ -66,6 +69,20 @@ Panel {
     statusFile.reload()
   }
 
+  // Persists dotfilesRepo inline into this widget's own bar.layout entry in
+  // ~/.config/omarchy/shell.json, the same mechanism Power/Tailscale/Clock
+  // use for their own per-instance settings (see shell/shell.qml's
+  // updateEntryInline - it replaces the entry with {id, ...settings}, so the
+  // full settings object must be passed, not just the changed key).
+  function saveDotfilesRepo(path) {
+    var trimmed = String(path || "").trim()
+    if (trimmed === rawRepoDir) return
+    var next = Object.assign({}, root.settings, { dotfilesRepo: trimmed })
+    if (root.bar && root.bar.shell && typeof root.bar.shell.updateEntryInline === "function") {
+      root.bar.shell.updateEntryInline(root.moduleName, next)
+    }
+  }
+
   function syncNow() {
     if (!configured || syncProc.running) return
     syncing = true
@@ -80,7 +97,8 @@ Panel {
   // where this plugin was authored.
   function runInFloatingTerminal(scriptName) {
     if (!configured || !root.bar) return
-    var cmd = "bash -lc \"cd '" + repoDir + "' && ./" + scriptName + "; echo; read -n1 -p 'Press any key to close'\""
+    var inner = "cd " + Util.shellQuote(repoDir) + " && ./" + scriptName + "; echo; read -n1 -p 'Press any key to close'"
+    var cmd = "bash -lc " + Util.shellQuote(inner)
     root.bar.run("omarchy-launch-floating-terminal-with-presentation " + cmd)
   }
 
@@ -154,7 +172,7 @@ Panel {
     bar: root.bar
     open: root.opened
     focusTarget: keyCatcher
-    contentWidth: panel.fittedContentWidth(Style.space(260))
+    contentWidth: panel.fittedContentWidth(Style.space(320))
     contentHeight: panel.fittedContentHeight(column.implicitHeight)
 
     PanelKeyCatcher {
@@ -178,6 +196,39 @@ Panel {
           font.family: root.bar ? root.bar.fontFamily : Style.font.family
           font.pixelSize: Style.font.bodySmall
           wrapMode: Text.WordWrap
+        }
+
+        Text {
+          textFormat: Text.PlainText
+          width: parent.width
+          text: "DOTFILES REPO PATH"
+          color: root.dim
+          font.family: root.bar ? root.bar.fontFamily : Style.font.family
+          font.pixelSize: Style.font.caption
+        }
+
+        Row {
+          width: parent.width
+          spacing: Style.space(6)
+
+          TextField {
+            id: repoField
+            width: parent.width - saveButton.width - parent.spacing
+            text: root.rawRepoDir
+            placeholderText: "~/Projects/dotfiles"
+            foreground: root.foreground
+            font.family: root.bar ? root.bar.fontFamily : Style.font.family
+            onAccepted: root.saveDotfilesRepo(repoField.text)
+          }
+
+          Button {
+            id: saveButton
+            text: "Save"
+            foreground: root.foreground
+            fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
+            bordered: true
+            onClicked: root.saveDotfilesRepo(repoField.text)
+          }
         }
 
         PanelSeparator {
@@ -222,17 +273,6 @@ Panel {
           fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
           bordered: true
           onClicked: root.openRepo()
-        }
-
-        Text {
-          textFormat: Text.PlainText
-          visible: !root.configured
-          width: parent.width
-          text: "Set \"Path to your dotfiles repo\" in this widget's settings (Setup > Plugins) to enable actions."
-          color: root.dim
-          font.family: root.bar ? root.bar.fontFamily : Style.font.family
-          font.pixelSize: Style.font.caption
-          wrapMode: Text.WordWrap
         }
       }
     }
