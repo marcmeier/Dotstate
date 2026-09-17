@@ -299,14 +299,39 @@ Panel {
             onClicked: root.openTemplatePage()
           }
 
+          Text {
+            textFormat: Text.PlainText
+            width: parent.width
+            text: "That creates your own copy of this tooling - it'll look empty " +
+                  "at first (no personal configs yet, by design). Once it's " +
+                  "created, paste its URL below."
+            color: root.dim
+            font.family: root.bar ? root.bar.fontFamily : Style.font.family
+            font.pixelSize: Style.font.caption
+            wrapMode: Text.WordWrap
+          }
+
           TextField {
             id: cloneUrlField
             width: parent.width
             text: root.cloneUrl
-            placeholderText: "git@github.com:you/your-dotfiles-repo.git"
+            placeholderText: "https://github.com/you/your-dotfiles-repo.git"
             foreground: root.foreground
             font.family: root.bar ? root.bar.fontFamily : Style.font.family
             onTextChanged: root.cloneUrl = text
+          }
+
+          Text {
+            textFormat: Text.PlainText
+            width: parent.width
+            text: "https:// works without an SSH key - for a private repo, git " +
+                  "will ask you to log in the first time, in the terminal window " +
+                  "below. Use a git@github.com:... URL instead only if you already " +
+                  "have an SSH key set up and prefer that."
+            color: root.dim
+            font.family: root.bar ? root.bar.fontFamily : Style.font.family
+            font.pixelSize: Style.font.caption
+            wrapMode: Text.WordWrap
           }
 
           TextField {
@@ -333,7 +358,9 @@ Panel {
             textFormat: Text.PlainText
             width: parent.width
             text: "Opens a terminal that clones your repo and runs its setup - " +
-                  "watch it in case it asks for a password or git login."
+                  "watch it in case it asks for a password or git login. If " +
+                  "something goes wrong partway through, use \"Start over\" below " +
+                  "once a path is set - you never need to remove/re-add the plugin."
             color: root.dim
             font.family: root.bar ? root.bar.fontFamily : Style.font.family
             font.pixelSize: Style.font.caption
@@ -391,6 +418,21 @@ Panel {
               bordered: true
               onClicked: root.saveDotfilesRepo(repoField.text)
             }
+          }
+
+          // Escape hatch for a botched clone/install: clears dotfilesRepo so
+          // the guided setup at the top reappears. Without this, the only
+          // way to retry after a wrong URL or a failed clone was to remove
+          // and re-add the whole plugin - recovering from your own mistake
+          // should never require that.
+          Button {
+            width: parent.width
+            visible: root.configured
+            text: "Start over (clear this path, redo guided setup)"
+            foreground: root.dim
+            fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
+            bordered: false
+            onClicked: root.saveDotfilesRepo("")
           }
         }
 

@@ -15,9 +15,12 @@ for the tooling only. You bring your own `home/` and `packages/*.txt`.
 
 ## What you get
 
-- `install.sh` — symlinks your configs into `$HOME`, installs your tracked
-  pacman/AUR packages, sets up the secret-scan git hook and the auto-sync
-  timer. Idempotent, safe to re-run.
+- `install.sh` — syncs pacman's package databases, installs your tracked
+  pacman/AUR packages, symlinks your configs into `$HOME`, sets up the
+  secret-scan git hook and the auto-sync timer. Idempotent, safe to
+  re-run. A missing/renamed package is reported and skipped rather than
+  aborting the whole run — everything else (symlinks, hooks, timer) still
+  happens.
 - `adopt.sh` — turns an existing real config file into a repo-tracked
   symlink (`--host` for machine-specific files).
 - `check-adoptable.sh` — read-only: scans `$HOME` for well-known config
@@ -56,12 +59,18 @@ for the tooling only. You bring your own `home/` and `packages/*.txt`.
    ```
 3. Click the new Dotstate icon in your bar. Everything from here is guided
    in the panel: click **"Don't have a repo yet? Create one on GitHub"** if
-   you skipped step 1, or paste your repo's URL and click **"Clone & set
-   up"**. That clones it, runs `install.sh` for you, and saves the path —
-   see [The bar widget](#the-bar-widget) below for exactly what it does and
-   what it refuses to do. The only thing you might need to do by hand is
-   answer a `sudo` password prompt or a git login in the terminal window it
-   opens for that.
+   you skipped step 1 (this is the same as step 1 — it just saves you the
+   trip; the new repo will look empty at first, since it's a copy of the
+   tooling, not your configs, and that's expected). Paste that repo's
+   **https://** URL (no SSH key needed — a private repo will just prompt
+   you to log in, in the terminal window this opens) and click **"Clone &
+   set up"**. That clones it, runs `install.sh` for you, and saves the
+   path — see [The bar widget](#the-bar-widget) below for exactly what it
+   does and what it refuses to do. The only thing you might need to do by
+   hand is answer that login prompt or a `sudo` password prompt for
+   package installs. If anything goes wrong partway through, the panel's
+   **"Start over"** button resets it back to this guided setup — you never
+   need to remove and re-add the plugin to retry.
 
 **Manual/CLI path**, if you'd rather drive it yourself:
 
@@ -119,6 +128,9 @@ guided clone flow.
 - **Open repo** — opens your working checkout in your file manager.
 - The **dotfiles repo path** field itself, still editable by hand if you'd
   rather manage it that way.
+- **Start over** — clears the configured path and brings back the guided
+  setup, for recovering from a wrong URL or a botched clone without
+  removing and re-adding the plugin.
 
 ## Host-specific configs
 

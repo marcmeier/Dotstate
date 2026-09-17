@@ -42,14 +42,46 @@ read_list() {
   grep -vE '^\s*#|^\s*$' "$1" 2>/dev/null || true
 }
 
-install_packages() {
-  log "Installing native packages (common + $HOST)"
-  local pkgs
-  pkgs="$(read_list "$PKG_DIR/pacman.common.txt"; read_list "$PKG_DIR/pacman.$HOST.txt")"
-  if [ -n "$pkgs" ]; then
-    # shellcheck disable=SC2086 # $pkgs is a list of package names, meant to split into args
-    sudo pacman -S --needed --noconfirm $pkgs
+# Installs $1 (a space-separated package list) via pacman. If the batch
+# transaction fails - which pacman does for the WHOLE transaction the
+# moment any single target isn't found, installing nothing at all, not
+# even the valid ones - retries one package at a time so one bad/renamed
+# name doesn't block the rest. Sets pkg_failures=1 (checked by main) and
+# warns with exactly which package(s) failed, instead of install.sh
+# aborting outright and never reaching link_dotfiles/setup_backup_timer.
+install_native_packages() {
+  local pkgs="$1"
+  [ -n "$pkgs" ] || return 0
+  # shellcheck disable=SC2086 # $pkgs is a list of package names, meant to split into args
+  if sudo pacman -S --needed --noconfirm $pkgs; then
+    return 0
   fi
+  warn "Batch package install failed - retrying one at a time so the rest still get installed"
+  local pkg failed=()
+  # shellcheck disable=SC2086 # $pkgs is a list of package names, meant to split into words
+  for pkg in $pkgs; do
+    sudo pacman -S --needed --noconfirm "$pkg" || failed+=("$pkg")
+  done
+  if [ "${#failed[@]}" -gt 0 ]; then
+    warn "Could not install: ${failed[*]} - check the name(s) in packages/pacman.*.txt (renamed, AUR-only, or a typo?)"
+    pkg_failures=1
+  fi
+}
+
+install_packages() {
+  # Without this, a fresh/stale machine has no (or an outdated) local
+  # package database, which pacman reports as e.g. "database file for
+  # core does not exist" and then "target not found" for anything you ask
+  # for next - not because the package doesn't exist, but because pacman
+  # never learned it does. `-Sy` alone (sync without upgrade) is an Arch
+  # anti-pattern that can produce a broken "partial upgrade", so this goes
+  # straight to a full `-Syu` instead, same as first-run advice for any
+  # fresh Arch/Omarchy install.
+  log "Syncing package databases and applying pending system updates"
+  sudo pacman -Syu --noconfirm || warn "pacman -Syu failed - continuing, but installs below may fail too"
+
+  log "Installing native packages (common + $HOST)"
+  install_native_packages "$(read_list "$PKG_DIR/pacman.common.txt"; read_list "$PKG_DIR/pacman.$HOST.txt")"
 
   log "Installing AUR packages (common + $HOST)"
   local aur_pkgs
@@ -59,7 +91,7 @@ install_packages() {
       warn "yay not found, skipping AUR packages: $aur_pkgs"
     else
       # shellcheck disable=SC2086 # $aur_pkgs is a list of package names, meant to split into args
-      yay -S --needed --noconfirm $aur_pkgs
+      yay -S --needed --noconfirm $aur_pkgs || { warn "Some AUR packages failed to install - check packages/aur.*.txt"; pkg_failures=1; }
     fi
   fi
 }
@@ -175,6 +207,7 @@ run_post_install_hook() {
 
 main() {
   guard_not_plugin_checkout
+  pkg_failures=0
 
   install_packages
   install_omarchy_plugins
@@ -190,6 +223,9 @@ main() {
   fi
   if [ "$conflicts" = "1" ]; then
     echo "  - Some configs were skipped due to another repo already managing them - see warnings above."
+  fi
+  if [ "$pkg_failures" = "1" ]; then
+    echo "  - Some packages failed to install - see warnings above. Everything else (symlinks, git hooks, sync timer) still ran."
   fi
 }
 
