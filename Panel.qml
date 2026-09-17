@@ -94,6 +94,7 @@ Panel {
     path: root.statusPath
     watchChanges: true
     printErrors: false
+    onFileChanged: reload()
     onLoaded: root.status = Model.parseStatus(text())
     onLoadFailed: root.status = Model.defaultStatus()
   }
@@ -141,7 +142,7 @@ Panel {
     anchors.fill: parent
     bar: root.bar
     text: ""
-    color: root.iconColor
+    foreground: root.iconColor
     tooltipText: root.tooltipText
     onPressed: root.toggle()
   }
