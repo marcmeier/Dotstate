@@ -25,7 +25,10 @@ for the tooling only. You bring your own `home/` and `packages/*.txt`.
   `install.sh`/`adopt.sh` once they're redundant.
 - `githooks/pre-commit` — blocks a commit if `gitleaks` finds a likely
   secret in the staged changes.
-- `plugin/` — an Omarchy Quickshell bar-widget plugin (see below).
+- `manifest.json` + `Panel.qml` + `Model.js` — an Omarchy Quickshell
+  bar-widget plugin (see below). These live at the repo root, not in a
+  subfolder, because `omarchy-plugin-validate` requires `manifest.json`
+  directly at the root of whatever `omarchy plugin add` clones.
 
 ## Quickstart
 
@@ -86,7 +89,8 @@ A failed run sends a desktop notification and leaves a status file at
 
 ## The bar widget
 
-`plugin/` is an Omarchy shell plugin (see the [Omarchy shell
+`manifest.json`/`Panel.qml`/`Model.js` at the repo root form an Omarchy
+shell plugin (see the [Omarchy shell
 docs](https://github.com/basecamp/omarchy/blob/quattro/shell/README.md)
 for how plugins work in general). It shows an icon in your bar:
 
