@@ -23,6 +23,33 @@ DEST_NAME="home"
 log()  { echo -e "\033[1;34m==>\033[0m $*"; }
 err()  { echo -e "\033[1;31m==>\033[0m $*" >&2; }
 
+# Prints the real path of the first symlink at or under $1 that resolves
+# outside this repo, or nothing if there is none. Catches both "$1 itself
+# is such a symlink" and "$1 is a real directory containing one" - the
+# latter is how install.sh actually lays things out (it symlinks individual
+# files, not whole directories), so a directory that looks unmanaged at the
+# top can still be full of files another dotfiles repo already owns.
+find_foreign_symlink() {
+  local path="$1" link real
+  if [ -L "$path" ]; then
+    real="$(readlink -f "$path" 2>/dev/null || true)"
+    case "$real" in
+      "$REPO_DIR"/*) ;;
+      *) [ -n "$real" ] && { echo "$real"; return 0; } ;;
+    esac
+    return 1
+  fi
+  [ -d "$path" ] || return 1
+  while IFS= read -r -d '' link; do
+    real="$(readlink -f "$link" 2>/dev/null || true)"
+    case "$real" in
+      "$REPO_DIR"/*) ;;
+      *) [ -n "$real" ] && { echo "$real"; return 0; } ;;
+    esac
+  done < <(find "$path" -type l -print0 2>/dev/null)
+  return 1
+}
+
 adopt_path() {
   local target="$1"
   # Normalize to an absolute path WITHOUT resolving symlinks: if $target
@@ -55,6 +82,13 @@ adopt_path() {
 
   if [ ! -e "$target" ]; then
     err "Skipping $rel: does not exist"
+    return 1
+  fi
+
+  local foreign
+  foreign="$(find_foreign_symlink "$target")" || true
+  if [ -n "$foreign" ]; then
+    err "Skipping $rel: already managed by another repo (points into $foreign) - adopt it there instead, or remove that management first if you really want it here"
     return 1
   fi
 
