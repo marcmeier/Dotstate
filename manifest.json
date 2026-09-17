@@ -5,7 +5,7 @@
   "version": "1.0.0",
   "author": "marcmeier",
   "license": "MIT",
-  "description": "Shows your dotfiles sync status in the Omarchy bar and lets you sync, check package drift, and check broken symlinks on demand.",
+  "description": "Guides first-time dotfiles setup and shows your sync status in the Omarchy bar, with one-click sync/drift/link-check actions.",
   "kinds": ["bar-widget"],
   "entryPoints": { "barWidget": "Panel.qml" },
   "barWidget": {

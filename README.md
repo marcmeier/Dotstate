@@ -31,11 +31,23 @@ for the tooling only. You bring your own `home/` and `packages/*.txt`.
 - `githooks/pre-commit` — blocks a commit if `gitleaks` finds a likely
   secret in the staged changes.
 - `manifest.json` + `Panel.qml` + `Model.js` — an Omarchy Quickshell
-  bar-widget plugin (see below). These live at the repo root, not in a
+  bar-widget plugin (see below) that also drives first-time setup (create
+  repo from template, clone, run `install.sh`) entirely from the bar, no
+  terminal commands required. These live at the repo root, not in a
   subfolder, because `omarchy-plugin-validate` requires `manifest.json`
   directly at the root of whatever `omarchy plugin add` clones.
 
 ## Quickstart
+
+**Fastest path — entirely from the bar, no terminal required:** add the
+plugin (see "The bar widget" below), click its icon, click **"Don't have a
+repo yet? Create one on GitHub"**, paste the URL of the repo you just
+created into the panel, and click **"Clone & set up"**. That clones it,
+runs `install.sh` for you, and saves the path — the only thing you might
+need to do by hand is answer a `sudo` password prompt or a git login in the
+terminal window it opens for that.
+
+**Manual/CLI path**, if you'd rather drive it yourself:
 
 1. Click **"Use this template"** on this repo to create your own (can be
    private) dotfiles repo.
@@ -104,6 +116,26 @@ plain config file, that's a false positive in a hardcoded list, not a
 bug in the logic — adopt it manually (copy it into `home/`, symlink it
 back, `git add`) instead of trying to force `adopt.sh` past the check.
 
+## Why install.sh refuses to relink some paths
+
+A separate incident: running this tooling on a machine that already had a
+*different* dotfiles repo managing some of the same `$HOME` paths (e.g. a
+private dotfiles repo alongside a Dotstate-based one, or `install.sh`
+accidentally run from the Omarchy plugin checkout under
+`~/.config/omarchy/plugins/` instead of the real working repo) let the
+second run silently back up and relink whatever the first one already
+owned — no warning, no confirmation. When that "other repo" was the
+plugin checkout (which Omarchy can update or delete on its own schedule),
+configs ended up pointing at a directory that no longer existed, which
+took down the whole Hyprland session.
+
+`install.sh` now refuses outright to run from inside
+`~/.config/omarchy/plugins/`, and its symlinking step (`link_tree`) skips
+— with a clear warning, not a silent takeover — any path that's already a
+symlink into a *different* repo, the same protection `adopt.sh` already
+had. There's no override flag here either: decide which repo should own
+the path and remove the other's claim on it yourself first.
+
 ## Secret scan
 
 `install.sh` points this repo's git hooks at `githooks/`. The `pre-commit`
@@ -142,9 +174,23 @@ for how plugins work in general). It shows an icon in your bar:
 | Normal (foreground) | Last sync succeeded |
 | Urgent | Last sync failed |
 
-Clicking it opens a small panel with a **dotfiles repo path** field (see
-below), **Sync now**, **Check package drift**, **Check symlinks**, and
-**Open repo**.
+Before a dotfiles repo is configured, clicking it opens a **guided setup**
+instead: a link to create your own repo from this template on GitHub, a
+field for that repo's git URL, a field for where to clone it (defaults to
+`~/Projects/dotfiles`), and a **"Clone & set up"** button that clones it
+and runs its `install.sh` for you in a terminal window it opens itself —
+you only need to touch that window if it asks for a `sudo` password or a
+git login. No command has to be typed or copy-pasted, and the README
+doesn't need to be read first.
+
+Once configured, the panel instead shows **Sync now**, **Run setup
+(install.sh)** (safe to re-run any time — e.g. after pulling changes made
+on another machine, or to repair broken symlinks), **Check package
+drift**, **Check symlinks**, **Find adoptable configs** (opens
+`check-adoptable.sh` in a terminal so you can review and adopt untracked
+configs without hunting for the script), **Open repo**, and the
+**dotfiles repo path** field itself, still editable by hand if you'd
+rather manage it that way.
 
 Add it once you've created your own repo from this template:
 
@@ -155,11 +201,11 @@ omarchy plugin add https://github.com/<you>/<your-dotfiles-repo>.git --enable --
 **Important:** this clones the plugin into its own directory under
 `~/.config/omarchy/plugins/`, separate from your actual working checkout
 (e.g. `~/Projects/dotfiles`). Because of that, the widget doesn't guess
-where your real repo is: click the icon, type the path you cloned it to in
-step 2 of the Quickstart into the **"Dotfiles repo path"** field, and hit
-**Save** (or Enter). This writes it inline into your widget's entry in
-`~/.config/omarchy/shell.json` — there's no separate settings page for
-third-party widgets in Setup > Plugins as of this Omarchy version.
+where your real repo is, and — since pointing it at the plugin's own
+checkout by mistake is exactly what has broken a desktop before (see "Why
+install.sh refuses to relink some paths" above) — it actively refuses to
+save a path under `~/.config/omarchy/plugins/`, whether typed by hand or
+produced by the guided clone flow.
 
 ## CI
 

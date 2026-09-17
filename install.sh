@@ -15,6 +15,27 @@ HOST="$(hostname)"
 
 log()  { echo -e "\033[1;34m==>\033[0m $*"; }
 warn() { echo -e "\033[1;33m==>\033[0m $*"; }
+err()  { echo -e "\033[1;31m==>\033[0m $*" >&2; }
+
+# Refuse to run from an Omarchy plugin checkout: `omarchy plugin add` clones
+# this repo into its own directory under ~/.config/omarchy/plugins/<id>/ so
+# the bar widget has code to load, separate from wherever the real working
+# dotfiles checkout lives (e.g. ~/Projects/dotfiles). That plugin clone is
+# managed by Omarchy (updated/removed on its own schedule) and was never
+# meant to be install.sh'd directly - doing so anyway has, in practice,
+# ended with every symlinked config pointing into a directory that Omarchy
+# then deleted out from under it. If you're reading this from a plugin
+# checkout, run install.sh from your actual dotfiles repo instead.
+guard_not_plugin_checkout() {
+  case "$REPO_DIR" in
+    "$HOME"/.config/omarchy/plugins/*)
+      err "Refusing to run from an Omarchy plugin checkout ($REPO_DIR)."
+      err "This directory is managed by Omarchy and can be updated/removed at any time."
+      err "Run install.sh from your real dotfiles checkout (see README.md Quickstart) instead."
+      exit 1
+      ;;
+  esac
+}
 
 read_list() {
   # Strips comments/blank lines from a package/plugin list file.
@@ -73,6 +94,31 @@ link_tree() {
       continue
     fi
 
+    # Already a symlink, but into some OTHER repo (a different dotfiles
+    # checkout already manages this path): refuse instead of silently
+    # backing it up and taking over. Mirrors adopt.sh's foreign-symlink
+    # check - this is the exact gap that let two dotfiles repos fight over
+    # the same $HOME paths with no warning, which has previously left
+    # configs (including Hyprland's) pointing at a directory that got
+    # deleted out from under them. No override flag: resolve it by hand
+    # (decide which repo should own it, remove the other's claim) instead
+    # of letting install.sh guess.
+    if [ -L "$target" ]; then
+      local current_link
+      current_link="$(readlink -f "$target" 2>/dev/null || true)"
+      case "$current_link" in
+        "$REPO_DIR"/*) ;;
+        *)
+          if [ -n "$current_link" ]; then
+            warn "Skipping $rel: already a symlink into a different repo ($current_link)."
+            warn "  Not relinking - remove that repo's claim on this path first if $REPO_DIR should own it."
+            conflicts=1
+            continue
+          fi
+          ;;
+      esac
+    fi
+
     mkdir -p "$(dirname "$target")"
 
     if [ -e "$target" ] || [ -L "$target" ]; then
@@ -87,12 +133,16 @@ link_tree() {
 
 link_dotfiles() {
   backed_up=0
+  conflicts=0
 
   link_tree "$REPO_DIR/home"
   link_tree "$REPO_DIR/home.$HOST"
 
   if [ "$backed_up" = "1" ]; then
     log "Existing files were backed up to $BACKUP_DIR"
+  fi
+  if [ "$conflicts" = "1" ]; then
+    warn "Some paths were skipped because another repo already manages them - see above."
   fi
 }
 
@@ -124,6 +174,8 @@ run_post_install_hook() {
 }
 
 main() {
+  guard_not_plugin_checkout
+
   install_packages
   install_omarchy_plugins
   link_dotfiles
@@ -135,6 +187,9 @@ main() {
   echo "  - Reload:  hyprctl reload  (or just log out/in)"
   if [ ! -x "$REPO_DIR/post-install.sh" ]; then
     echo "  - Add a post-install.sh at the repo root for any manual steps specific to your setup."
+  fi
+  if [ "$conflicts" = "1" ]; then
+    echo "  - Some configs were skipped due to another repo already managing them - see warnings above."
   fi
 }
 
