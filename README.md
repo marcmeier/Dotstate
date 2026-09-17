@@ -1,8 +1,14 @@
 # Dotstate
 
-Dotfiles management tooling for [Omarchy](https://omarchy.org/) (Arch +
-Hyprland), plus an Omarchy bar-widget plugin that shows your sync status
-and gives you one-click sync/drift/link-check actions.
+Dotfiles management for [Omarchy](https://omarchy.org/) (Arch + Hyprland),
+built around a bar-widget plugin: after one `omarchy plugin add` command,
+first-time setup, syncing, and day-to-day checks all happen by clicking in
+the panel — no shell commands to learn, no README required. It's also
+built to fail safely: `install.sh` and `adopt.sh` both refuse to silently
+overwrite a config another repo already manages, the two mistakes that have
+previously broken a real desktop (see [The bar
+widget](#the-bar-widget) and [Why install.sh refuses to relink some
+paths](#why-installsh-refuses-to-relink-some-paths) below).
 
 Dotstate itself ships **no personal configuration** — it's a template repo
 for the tooling only. You bring your own `home/` and `packages/*.txt`.
@@ -39,31 +45,80 @@ for the tooling only. You bring your own `home/` and `packages/*.txt`.
 
 ## Quickstart
 
-**Fastest path — entirely from the bar, no terminal required:** add the
-plugin (see "The bar widget" below), click its icon, click **"Don't have a
-repo yet? Create one on GitHub"**, paste the URL of the repo you just
-created into the panel, and click **"Clone & set up"**. That clones it,
-runs `install.sh` for you, and saves the path — the only thing you might
-need to do by hand is answer a `sudo` password prompt or a git login in the
-terminal window it opens for that.
-
-**Manual/CLI path**, if you'd rather drive it yourself:
+**Bar-driven (recommended) — only one command, everything else is clicking:**
 
 1. Click **"Use this template"** on this repo to create your own (can be
    private) dotfiles repo.
-2. Clone it, e.g. to `~/Projects/dotfiles`.
-3. Run `./check-adoptable.sh` to find well-known config paths already on
-   this machine that aren't tracked yet. Review its suggestions and
-   `./adopt.sh` the ones you actually want, **one at a time** — or add
-   files under `home/` (mirrors `$HOME`) by hand. Add your extra packages
-   in `packages/pacman.common.txt` / `packages/aur.common.txt`.
-4. `./install.sh`
+2. Add it as an Omarchy plugin — this is the one unavoidable terminal
+   command, since it's how Omarchy loads any bar plugin in the first place:
+   ```bash
+   omarchy plugin add https://github.com/<you>/<your-dotfiles-repo>.git --enable --yes
+   ```
+3. Click the new Dotstate icon in your bar. Everything from here is guided
+   in the panel: click **"Don't have a repo yet? Create one on GitHub"** if
+   you skipped step 1, or paste your repo's URL and click **"Clone & set
+   up"**. That clones it, runs `install.sh` for you, and saves the path —
+   see [The bar widget](#the-bar-widget) below for exactly what it does and
+   what it refuses to do. The only thing you might need to do by hand is
+   answer a `sudo` password prompt or a git login in the terminal window it
+   opens for that.
+
+**Manual/CLI path**, if you'd rather drive it yourself:
 
 ```bash
 git clone git@github.com:<you>/<your-dotfiles-repo>.git ~/Projects/dotfiles
 cd ~/Projects/dotfiles
+./check-adoptable.sh   # find well-known configs on this machine not tracked yet;
+                        # review, then ./adopt.sh the ones you want, one at a time
 ./install.sh
 ```
+
+## The bar widget
+
+`manifest.json`/`Panel.qml`/`Model.js` at the repo root form an Omarchy
+shell plugin (see the [Omarchy shell
+docs](https://github.com/basecamp/omarchy/blob/quattro/shell/README.md)
+for how plugins work in general, and step 2 of the Quickstart above for how
+to add it). It shows an icon in your bar:
+
+| Color | Meaning |
+|---|---|
+| Dim | Not configured yet, or no sync has run |
+| Normal (foreground) | Last sync succeeded |
+| Urgent | Last sync failed |
+
+**Before a dotfiles repo is configured**, clicking it opens a guided setup
+instead of a bare settings field: a link to create your own repo from this
+template on GitHub, a field for that repo's git URL, a field for where to
+clone it (defaults to `~/Projects/dotfiles`), and a **"Clone & set up"**
+button that clones it and runs its `install.sh` for you in a terminal
+window it opens itself — you only need to touch that window if it asks for
+a `sudo` password or a git login. No command has to be typed or
+copy-pasted, and nothing above this section needs to be read first.
+
+**Important:** `omarchy plugin add` clones this repo into its own directory
+under `~/.config/omarchy/plugins/`, separate from your actual working
+checkout (e.g. `~/Projects/dotfiles`). Because of that, the widget doesn't
+guess where your real repo is — and since pointing it at the plugin's own
+checkout by mistake is exactly what has broken a desktop before (see [Why
+install.sh refuses to relink some paths](#why-installsh-refuses-to-relink-some-paths)
+below), it actively refuses to save a path under
+`~/.config/omarchy/plugins/`, whether typed by hand or produced by the
+guided clone flow.
+
+**Once configured**, the panel instead shows:
+
+- **Sync now** — triggers `backup.sh` immediately.
+- **Run setup (install.sh)** — safe to re-run any time, e.g. after pulling
+  changes made on another machine, or to repair broken symlinks.
+- **Check package drift** / **Check symlinks** — read-only checks, output
+  shown in a terminal window.
+- **Find adoptable configs** — opens `check-adoptable.sh` in a terminal so
+  you can review and adopt untracked configs without hunting for the
+  script yourself.
+- **Open repo** — opens your working checkout in your file manager.
+- The **dotfiles repo path** field itself, still editable by hand if you'd
+  rather manage it that way.
 
 ## Host-specific configs
 
@@ -159,53 +214,8 @@ journalctl --user -u dotstate-backup.service   # logs
 ```
 
 A failed run sends a desktop notification and leaves a status file at
-`~/.cache/dotstate/status.json`, which the bar widget below reads.
-
-## The bar widget
-
-`manifest.json`/`Panel.qml`/`Model.js` at the repo root form an Omarchy
-shell plugin (see the [Omarchy shell
-docs](https://github.com/basecamp/omarchy/blob/quattro/shell/README.md)
-for how plugins work in general). It shows an icon in your bar:
-
-| Color | Meaning |
-|---|---|
-| Dim | Not configured yet, or no sync has run |
-| Normal (foreground) | Last sync succeeded |
-| Urgent | Last sync failed |
-
-Before a dotfiles repo is configured, clicking it opens a **guided setup**
-instead: a link to create your own repo from this template on GitHub, a
-field for that repo's git URL, a field for where to clone it (defaults to
-`~/Projects/dotfiles`), and a **"Clone & set up"** button that clones it
-and runs its `install.sh` for you in a terminal window it opens itself —
-you only need to touch that window if it asks for a `sudo` password or a
-git login. No command has to be typed or copy-pasted, and the README
-doesn't need to be read first.
-
-Once configured, the panel instead shows **Sync now**, **Run setup
-(install.sh)** (safe to re-run any time — e.g. after pulling changes made
-on another machine, or to repair broken symlinks), **Check package
-drift**, **Check symlinks**, **Find adoptable configs** (opens
-`check-adoptable.sh` in a terminal so you can review and adopt untracked
-configs without hunting for the script), **Open repo**, and the
-**dotfiles repo path** field itself, still editable by hand if you'd
-rather manage it that way.
-
-Add it once you've created your own repo from this template:
-
-```bash
-omarchy plugin add https://github.com/<you>/<your-dotfiles-repo>.git --enable --yes
-```
-
-**Important:** this clones the plugin into its own directory under
-`~/.config/omarchy/plugins/`, separate from your actual working checkout
-(e.g. `~/Projects/dotfiles`). Because of that, the widget doesn't guess
-where your real repo is, and — since pointing it at the plugin's own
-checkout by mistake is exactly what has broken a desktop before (see "Why
-install.sh refuses to relink some paths" above) — it actively refuses to
-save a path under `~/.config/omarchy/plugins/`, whether typed by hand or
-produced by the guided clone flow.
+`~/.cache/dotstate/status.json`, which [the bar widget](#the-bar-widget)
+reads.
 
 ## CI
 
