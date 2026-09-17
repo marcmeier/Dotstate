@@ -14,6 +14,9 @@ for the tooling only. You bring your own `home/` and `packages/*.txt`.
   timer. Idempotent, safe to re-run.
 - `adopt.sh` — turns an existing real config file into a repo-tracked
   symlink (`--host` for machine-specific files).
+- `check-adoptable.sh` — read-only: scans `$HOME` for config-looking paths
+  not yet tracked and prints ready-to-run `adopt.sh` commands, so you don't
+  have to hunt for them yourself on a new machine.
 - `backup.sh` — auto-commits and pushes changes; run by a systemd user
   timer daily and ~5 minutes after login. Writes the status the bar widget
   reads.
@@ -35,10 +38,11 @@ for the tooling only. You bring your own `home/` and `packages/*.txt`.
 1. Click **"Use this template"** on this repo to create your own (can be
    private) dotfiles repo.
 2. Clone it, e.g. to `~/Projects/dotfiles`.
-3. Add your configs under `home/` (mirrors `$HOME`) and your extra
-   packages in `packages/pacman.common.txt` / `packages/aur.common.txt` —
-   or use `./adopt.sh ~/.config/foo/bar.conf` to pull in files you already
-   have.
+3. Run `./check-adoptable.sh` to find config-looking paths already on this
+   machine that aren't tracked yet, and `./adopt.sh` the ones you want (see
+   its printed suggestions) — or add files under `home/` (mirrors `$HOME`)
+   by hand. Add your extra packages in `packages/pacman.common.txt` /
+   `packages/aur.common.txt`.
 4. `./install.sh`
 
 ```bash
